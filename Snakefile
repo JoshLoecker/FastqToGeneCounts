@@ -261,14 +261,6 @@ rule preroundup:
                     elif char.isdigit():
                         study += char
 
-                print(srr_code)
-                print(name)
-                print(tissue_name)
-                print(tag)
-                print(endtype)
-                print(prep)
-                print(study)
-
                 # Make the required directories
                 os.makedirs(os.path.join("MADRID_input", tissue_name, "geneCounts"), exist_ok=True)
                 os.makedirs(os.path.join("MADRID_input", tissue_name, "insertSizeMetrics"), exist_ok=True)

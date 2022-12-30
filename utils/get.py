@@ -7,13 +7,13 @@ from . import perform
 
 
 def from_master_config(config: dict, attribute: str) -> list[str]:
-    valid_inputs = ["SRR", "tissue", "tag", "PE_SE"]
-    sub_list = ["tissue", "tag"]
-    if attribute not in valid_inputs:
-        sys.exit(f"\nInvalid attribute input. '{attribute}' is not one of: {valid_inputs}\n")
+    valid_attributes = ["SRR", "tissue", "tag", "PE_SE"]
+    sub_attribute = ["tissue", "tag"]
+    if attribute not in valid_attributes:
+        sys.exit(f"\nInvalid attribute input. '{attribute}' is not one of: {valid_attributes}\n")
     else:
         collect_attributes = []
-        index_value = valid_inputs.index(attribute)
+        index_value = valid_attributes.index(attribute)
 
         # We have to subtract one because "tissue" and "tag" are in the same index, thus the index value in valid_inputs is increased by one
         if index_value >= 2:
@@ -29,21 +29,23 @@ def from_master_config(config: dict, attribute: str) -> list[str]:
             PE_SE_value = line[2]  # get PE or SE
 
             # test if we are looking for "tissue" or "tag", as these two values are located at master_control index 1
-            if attribute in sub_list:
-                sub_index = sub_list.index(attribute)
-                split_list = str(line[index_value]).split("_")
+            if attribute in sub_attribute:
+                sub_index = sub_attribute.index(attribute)
+                tissue_and_tag: list[str] = str(line[index_value]).split("_")
 
                 # We must append the target attribute twice if it is paired end, once if it is single end
                 if PE_SE_value == "PE":
-                    target_attribute = [split_list[sub_index], split_list[sub_index]]
+                    target_attribute = [tissue_and_tag[sub_index], tissue_and_tag[sub_index]]
                 else:  # Single end
-                    target_attribute = [split_list[sub_index]]
+                    target_attribute = [tissue_and_tag[sub_index]]
 
             elif attribute == "PE_SE":
                 # We must append the target attribute twice if it is paired end, once if it is single end
-                if column_value == "PE":
+                if column_value == "PE":  # paired end
                     target_attribute = ["1", "2"]
-                else:  # Single end
+                elif column_value == "SC":  # single cell
+                    target_attribute = ["1", "2", "3"]
+                elif column_value == "SE":  # Single end
                     target_attribute = ["S"]
 
             else:
