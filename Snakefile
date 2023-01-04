@@ -3,6 +3,7 @@ import csv
 import warnings
 import sys
 import pandas as pd
+from typing import Literal
 from utils import get, perform
 
 configfile: "snakemake_config.yaml"
@@ -429,7 +430,7 @@ if perform.prefetch(config=config):
         params:
             temp_directory="/scratch",
             temp_file="/scratch/{tissue_name}_{tag}.sra",
-            output_directory=os.path.join(config["ROOTDIR"],"temp","prefetch","{tissue_name}_{tag}")
+            output_directory=os.path.join(config["ROOTDIR"],"temp","prefetch","{tissue_name}_{tag}"),
         resources:
             mem_mb=lambda wildcards, attempt: 10000 * attempt,
             runtime=lambda wildcards, attempt: 30 * attempt,
@@ -478,7 +479,8 @@ if perform.prefetch(config=config):
                                             else f"{wildcards.tissue_name}_{wildcards.tag}.fastq",
             gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2"]
                                         else f"{wildcards.tissue_name}_{wildcards.tag}.fastq.gz",
-            split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2"] else False
+            split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2", "3"] else False,
+            end_type= lambda wildcards: get.end_type(config=config,tissue_name=wildcards.tissue_name,tag=wildcards.tag)
         resources:
             mem_mb=lambda wildcards, attempt: 25600 * attempt,  # 25 GB
             time_min=lambda wildcards, attempt: 45 * attempt,
@@ -493,6 +495,10 @@ if perform.prefetch(config=config):
                 command+=' --split-files'
             else
                 command+=' --concatenate-reads'
+            fi
+            
+            if [[ "{params.end_type}" == "single-cell" ]]; then
+                command+=" --include-technical"
             fi
             
             # Add the SRA file path to the command
@@ -801,29 +807,37 @@ def collect_star_align_input(wildcards):
         if wildcards.tissue_name in read and wildcards.tag in read:
             return read.split(" ")
 
+
+
 def new_star_input(wildcards):
     # Open the control file to determine which samples are paired end or not
     is_paired_end: bool = False
-    with open(config["MASTER_CONTROL"], "r") as i_stream:
-        for line in i_stream:
+    is_single_cell: bool = False
+    is_single_end: bool = False
 
-            # If the current tissue and tag is found in the line, we can determine paired or single end
-            sample = f"{wildcards.tissue_name}_{wildcards.tag}"
-            if sample in line:
-                # Set boolean to determine if it is paired end
-                is_paired_end = "PE" in line
-                break  # No need to continue looping
+    end_type: str = get.end_type(config=config, tissue_name=wildcards.tissue_name, tag=wildcards.tag)
+
+    if end_type == "paired-end":
+        is_paired_end = True
+    elif end_type == "single-end":
+        is_single_cell = True
+    elif end_type == "single-cell":
+        is_single_cell = True
 
     # Get the output files, using our determined paired/single ends
     if is_paired_end:
         forward = checkpoints.trim.get(**wildcards, PE_SE="1").output
         reverse = checkpoints.trim.get(**wildcards, PE_SE="2").output
         returnal = forward + reverse
-    else:
+    elif is_single_cell:
+        forward = checkpoints.trim.get(**wildcards, PE_SE="1").output
+        reverse = checkpoints.trim.get(**wildcards, PE_SE="2").output
+        index = checkpoints.trim.get(**wildcards, PE_SE="3").output
+        returnal = forward + reverse + index
+    elif is_single_end:
         returnal = checkpoints.trim.get(**wildcards, PE_SE="S").output
 
     return returnal
-
 
 def get_star_align_runtime(wildcards, input, attempt):
     """
@@ -853,6 +867,7 @@ rule star_align:
     params:
         tissue_name="{tissue_name}",
         tag="{tag}",
+        end_type=lambda wildcards: get.end_type(config=config, tissue_name=wildcards.tissue_name, tag=wildcards.tag),
         gene_table_output=os.path.join(config["ROOTDIR"], "data", "{tissue_name}", "aligned_reads", "{tag}", "{tissue_name}_{tag}_ReadsPerGene.out.tab"),
         bam_output=os.path.join(config["ROOTDIR"], "data", "{tissue_name}", "aligned_reads", "{tag}", "{tissue_name}_{tag}_Aligned.sortedByCoord.out.bam"),
         prefix=os.path.join(config["ROOTDIR"], "data", "{tissue_name}", "aligned_reads", "{tag}", "{tissue_name}_{tag}_"),
@@ -864,7 +879,15 @@ rule star_align:
     benchmark: repeat(os.path.join("benchmarks","{tissue_name}","star_align","{tissue_name}_{tag}.benchmark"), config["BENCHMARK_TIMES"])
     shell:
         """
-        STAR \
+        echo {params.end_type}
+        
+        if [[ {params.end_type} == "single-cell" ]]; then
+            command="STAR --soloType Droplet"
+        else
+            command="STAR"
+        fi
+        
+        $command \
         --runThreadN {threads} \
 		--readFilesCommand "zcat" \
 		--readFilesIn {input.reads} \
