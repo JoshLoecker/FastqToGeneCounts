@@ -288,6 +288,7 @@ rule preroundup:
                         end_type_write_root.write("single-cell")
                         end_type_write_madrid.write("single-cell")
                     case _:
+                        print(f"Rule preroundup: Invalid endtype. Must be one of: {[i.name for i in EndType.__members__.values()]}")
                         raise ValueError(f"Rule preroundup: Invalid endtype: {endtype}")
                 end_type_write_root.close()
                 end_type_write_madrid.close()
@@ -480,9 +481,9 @@ if perform.prefetch(config=config):
         params:
             # split_command=lambda wildcards: "--split-files" if wildcards.PE_SE in ["1", "2"] else "--concatenate-reads",
             temp_dir="/scratch",
-            temp_filename=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq" if wildcards.PE_SE in ["1", "2"]
+            temp_filename=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq" if wildcards.PE_SE in ["1", "2", "3"]
                                             else f"{wildcards.tissue_name}_{wildcards.tag}.fastq",
-            gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2"]
+            gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2", "3"]
                                         else f"{wildcards.tissue_name}_{wildcards.tag}.fastq.gz",
             split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2", "3"] else False,
             end_type= lambda wildcards: get.end_type(config=config,tissue_name=wildcards.tissue_name,tag=wildcards.tag)
@@ -513,6 +514,8 @@ if perform.prefetch(config=config):
             eval $command
         
             # gzip the output
+            echo "scratch"
+            ls /scratch/
             pigz --synchronous --processes {threads} {params.temp_dir}/{params.temp_filename}
         
             mv {params.temp_dir}/{params.gzip_file} {output}
