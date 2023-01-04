@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 from typing import Literal
 from utils import get, perform
+from utils.constants import EndType
 
 configfile: "snakemake_config.yaml"
 # samples: pd.DataFrame = pd.read_csv(config["MASTER_CONTROL"])
@@ -240,7 +241,7 @@ rule preroundup:
         runtime=lambda wildcards, attempt: 5 * attempt
     run:
         # SRR12873784,effectorcd8_S1R1,PE,total
-        with open(input,"r") as i_stream:
+        with open(str(input),"r") as i_stream:
             reader = csv.reader(i_stream)
             for line in reader:
                 # Collect the required data
@@ -276,14 +277,18 @@ rule preroundup:
                 # Write single/paired end to the appropriate location
                 end_type_write_root = open(os.path.join(config["ROOTDIR"], "data", tissue_name, "layouts", f"{name}_layout.txt"), "w")
                 end_type_write_madrid = open(os.path.join("MADRID_input",tissue_name,"layouts",study,f"{name}_layout.txt"), "w")
-                if endtype == "SE":
-                    end_type_write_root.write("single-end")
-                    end_type_write_madrid.write("single-end")
-                elif endtype == "PE":
-                    end_type_write_root.write("paired-end")
-                    end_type_write_madrid.write("paired-end")
-                else:
-                    raise ValueError(f"Rule preroundup: Invalid endtype: {endtype}")
+                match endtype:
+                    case EndType.single_end.value:
+                        end_type_write_root.write("single-end")
+                        end_type_write_madrid.write("single-end")
+                    case EndType.paired_end.value:
+                        end_type_write_root.write("paired-end")
+                        end_type_write_madrid.write("paired-end")
+                    case EndType.single_cell.value:
+                        end_type_write_root.write("single-cell")
+                        end_type_write_madrid.write("single-cell")
+                    case _:
+                        raise ValueError(f"Rule preroundup: Invalid endtype: {endtype}")
                 end_type_write_root.close()
                 end_type_write_madrid.close()
 
