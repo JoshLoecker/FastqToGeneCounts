@@ -249,7 +249,7 @@ rule preroundup:
                 name: str = line[1]                     # naiveB_S1R1
                 tissue_name: str = name.split("_")[0]   # naiveB
                 tag: str = name.split("_")[1]           # S1R1
-                endtype: str = line[2]                  # PE
+                end_type: str = line[2]                  # PE
                 prep: str = line[3].lower()             # total
 
                 # Set the study
@@ -277,7 +277,7 @@ rule preroundup:
                 # Write single/paired end to the appropriate location
                 end_type_write_root = open(os.path.join(config["ROOTDIR"], "data", tissue_name, "layouts", f"{name}_layout.txt"), "w")
                 end_type_write_madrid = open(os.path.join("MADRID_input",tissue_name,"layouts",study,f"{name}_layout.txt"), "w")
-                match endtype:
+                match end_type:
                     case EndType.single_end.value:
                         end_type_write_root.write("single-end")
                         end_type_write_madrid.write("single-end")
@@ -289,7 +289,7 @@ rule preroundup:
                         end_type_write_madrid.write("single-cell")
                     case _:
                         print(f"Rule preroundup: Invalid endtype. Must be one of: {[i.name for i in EndType.__members__.values()]}")
-                        raise ValueError(f"Rule preroundup: Invalid endtype: {endtype}")
+                        raise ValueError(f"Rule preroundup: Invalid endtype: {end_type}")
                 end_type_write_root.close()
                 end_type_write_madrid.close()
 
@@ -481,11 +481,11 @@ if perform.prefetch(config=config):
         params:
             # split_command=lambda wildcards: "--split-files" if wildcards.PE_SE in ["1", "2"] else "--concatenate-reads",
             temp_dir="/scratch",
-            temp_filename=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq" if wildcards.PE_SE in ["1", "2", "3"]
+            temp_filename=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq" if wildcards.PE_SE in ["1", "2"]
                                             else f"{wildcards.tissue_name}_{wildcards.tag}.fastq",
-            gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2", "3"]
+            gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2"]
                                         else f"{wildcards.tissue_name}_{wildcards.tag}.fastq.gz",
-            split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2", "3"] else False,
+            split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2"] else False,
             end_type= lambda wildcards: get.end_type(config=config,tissue_name=wildcards.tissue_name,tag=wildcards.tag)
         resources:
             mem_mb=lambda wildcards, attempt: 25600 * attempt,  # 25 GB
@@ -823,25 +823,20 @@ def new_star_input(wildcards):
     is_single_cell: bool = False
     is_single_end: bool = False
 
-    end_type: str = get.end_type(config=config, tissue_name=wildcards.tissue_name, tag=wildcards.tag)
-
-    if end_type == "paired-end":
-        is_paired_end = True
-    elif end_type == "single-end":
-        is_single_cell = True
-    elif end_type == "single-cell":
-        is_single_cell = True
+    end_type: EndType = get.end_type(config=config, tissue_name=wildcards.tissue_name, tag=wildcards.tag)
+    match end_type:
+        case EndType.paired_end:
+            is_paired_end = True
+        case EndType.single_end:
+            is_single_cell = True
+        case EndType.single_cell:
+            is_single_cell = True
 
     # Get the output files, using our determined paired/single ends
-    if is_paired_end:
+    if is_paired_end or is_single_cell:
         forward = checkpoints.trim.get(**wildcards, PE_SE="1").output
         reverse = checkpoints.trim.get(**wildcards, PE_SE="2").output
         returnal = forward + reverse
-    elif is_single_cell:
-        forward = checkpoints.trim.get(**wildcards, PE_SE="1").output
-        reverse = checkpoints.trim.get(**wildcards, PE_SE="2").output
-        index = checkpoints.trim.get(**wildcards, PE_SE="3").output
-        returnal = forward + reverse + index
     elif is_single_end:
         returnal = checkpoints.trim.get(**wildcards, PE_SE="S").output
 
@@ -889,8 +884,8 @@ rule star_align:
         """
         echo {params.end_type}
         
-        if [[ {params.end_type} == "single-cell" ]]; then
-            command="STAR --soloType Droplet"
+        if [[ "{params.end_type}" == "single-cell" ]]; then
+            command="STAR --outFilterType BySJout --outFilterMultimapNmax 20"
         else
             command="STAR"
         fi
