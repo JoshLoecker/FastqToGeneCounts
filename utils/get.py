@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 from . import perform
 from .constants import EndType
-
+from . import single_cell
 
 def from_master_config(config: dict, attribute: Literal["SRR", "tissue", "tag", "PE_SE"]) -> list[str]:
     valid_attributes = ["SRR", "tissue", "tag", "PE_SE"]
@@ -29,30 +29,49 @@ def from_master_config(config: dict, attribute: Literal["SRR", "tissue", "tag", 
             # Get the column from master_control we are interested in
             column_value = line[index_value]
             PE_SE_value = line[2]  # get PE or SE
-
-            # test if we are looking for "tissue" or "tag", as these two values are located at master_control index 1
+            # These values will be used if we are collecting tissue/tag data
             if attribute in sub_attribute:
                 sub_index = sub_attribute.index(attribute)
                 tissue_and_tag: list[str] = str(line[index_value]).split("_")  # Get the tissue and tag value
-
-                # We must append the target attribute twice if it is paired end, once if it is single end
-                if PE_SE_value in [EndType.paired_end.value, EndType.single_cell.value]:
-                    target_attribute = [tissue_and_tag[sub_index], tissue_and_tag[sub_index]]
-                elif PE_SE_value == EndType.single_end.value:
-                    target_attribute = [tissue_and_tag[sub_index]]
-
-            elif attribute == "PE_SE":
-                # We must append the target attribute twice if it is paired end, once if it is single end
-                if column_value in [EndType.paired_end.value, EndType.single_cell.value]:
-                    target_attribute = ["1", "2"]
-                elif column_value == EndType.single_end.value:
-                    target_attribute = ["S"]
-
-            else:
-                if PE_SE_value in [EndType.paired_end.value, EndType.single_cell.value]:
-                    target_attribute = [line[index_value], line[index_value]]
-                elif PE_SE_value == EndType.single_end.value:
-                    target_attribute = [line[index_value]]
+            
+            # If we are collecting single cell data, get it from NCBI database
+            if PE_SE_value == EndType.single_cell.value:
+                srr_code = line[0]
+                srr_data: single_cell.SRR = single_cell.collect(srr_code)
+            
+            target_attribute: list[str] = []
+            if PE_SE_value == EndType.paired_end.value:
+                # Append everything twice
+                if attribute in sub_attribute:
+                    target_attribute.extend([tissue_and_tag[sub_index], tissue_and_tag[sub_index]])
+                elif attribute == "PE_SE":
+                    target_attribute.extend(["1", "2"])
+                else:
+                    target_attribute.extend([line[index_value], line[index_value]])
+            
+            elif PE_SE_value == EndType.single_end.value:
+                # Append everything once
+                if attribute in sub_attribute:
+                    target_attribute.append(tissue_and_tag[sub_index])
+                elif attribute == "PE_SE":
+                    target_attribute.append("S")
+                else:
+                    target_attribute.append(line[index_value])
+            
+            elif PE_SE_value == EndType.single_cell.value:
+                # Append based on number of reads collected
+                if attribute in sub_attribute:
+                    for _ in range(int(srr_data.num_reads)):
+                        target_attribute.append(tissue_and_tag[sub_index])
+                elif attribute == "PE_SE":
+                    if srr_data.num_reads == "variable":
+                        target_attribute.extend(["1", "2"])
+                    else:
+                        for i in range(1, int(srr_data.num_reads) + 1):
+                            target_attribute.append(str(i))
+                else:
+                    for _ in range(int(srr_data.num_reads)):
+                        target_attribute.append(line[index_value])
 
             collect_attributes += target_attribute
 
@@ -98,11 +117,12 @@ def end_type(config: dict, tissue_name: str, tag: str) -> EndType:
         for line in i_stream:
             sample: str = f"{tissue_name}_{tag}"
             if sample in line:
-                if str(EndType.paired_end.value) in line:
+                end_type = line.split(",")[2]
+                if end_type == "PE":
                     return EndType.paired_end
-                elif str(EndType.single_end.value) in line:
+                elif end_type == "SE":
                     return EndType.single_end
-                elif str(EndType.single_cell.value) in line:
+                elif end_type == "SLC":
                     return EndType.single_cell
         else:
             raise ValueError(f"Tissue name of '{tissue_name}' and tag of '{tag}' could not be found in the control file. Please double check your control file")

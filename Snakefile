@@ -6,6 +6,7 @@ import pandas as pd
 from typing import Literal
 from utils import get, perform
 from utils.constants import EndType
+from utils import single_cell
 
 configfile: "snakemake_config.yaml"
 # samples: pd.DataFrame = pd.read_csv(config["MASTER_CONTROL"])
@@ -833,12 +834,21 @@ def new_star_input(wildcards):
             is_single_cell = True
 
     # Get the output files, using our determined paired/single ends
-    if is_paired_end or is_single_cell:
+    if is_paired_end:
         forward = checkpoints.trim.get(**wildcards, PE_SE="1").output
         reverse = checkpoints.trim.get(**wildcards, PE_SE="2").output
         returnal = forward + reverse
     elif is_single_end:
         returnal = checkpoints.trim.get(**wildcards, PE_SE="S").output
+    elif is_single_cell:
+        srr_code: list[str] = get.srr_code(config)
+        srr_data: single_cell.SRR = single_cell.collect(srr_code[0])
+
+        forward = checkpoints.trim.get(**wildcards, PE_SE="1").output
+        reverse = checkpoints.trim.get(**wildcards, PE_SE="2").output
+        returnal = forward + reverse
+        if srr_data.num_reads is int and int(srr_data.num_reads) == 3:
+            returnal += checkpoints.trim.get(**wildcards, PE_SE="3").output
 
     return returnal
 
@@ -882,9 +892,8 @@ rule star_align:
     benchmark: repeat(os.path.join("benchmarks","{tissue_name}","star_align","{tissue_name}_{tag}.benchmark"), config["BENCHMARK_TIMES"])
     shell:
         """
-        echo {params.end_type}
         
-        if [[ "{params.end_type}" == "single-cell" ]]; then
+        if [[ "{params.end_type.name}" == "single-cell" ]]; then
             command="STAR --outFilterType BySJout --outFilterMultimapNmax 20"
         else
             command="STAR"
@@ -1256,17 +1265,4 @@ rule multiqc:
         """
         mkdir -p "{output.output_directory}"
         multiqc --force --title "{wildcards.tissue_name}" --filename {wildcards.tissue_name}_multiqc_report.html --outdir {output.output_directory} "{params.input_directory}"
-        
-        if ls ./*.txt 1> /dev/null 2>&1; then
-            rm *.txt
-        fi
-        if ls ./*.html 1> /dev/null 2>&1; then
-            rm *.html
-        fi
-        if ls ./*.png 1> /dev/null 2>&1; then
-            rm *.png
-        fi
-        if ls ./*.fastq 1> /dev/null 2>&1; then
-            rm *.fastq
-        fi
         """
