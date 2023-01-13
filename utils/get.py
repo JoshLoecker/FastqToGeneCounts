@@ -64,11 +64,8 @@ def from_master_config(config: dict, attribute: Literal["SRR", "tissue", "tag", 
                     for _ in range(int(srr_data.num_reads)):
                         target_attribute.append(tissue_and_tag[sub_index])
                 elif attribute == "PE_SE":
-                    if srr_data.num_reads == "variable":
-                        target_attribute.extend(["1", "2"])
-                    else:
-                        for i in range(1, int(srr_data.num_reads) + 1):
-                            target_attribute.append(str(i))
+                    for i in range(1, int(srr_data.num_reads) + 1):
+                        target_attribute.append(str(i))
                 else:
                     for _ in range(int(srr_data.num_reads)):
                         target_attribute.append(line[index_value])

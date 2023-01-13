@@ -4,9 +4,12 @@ from xml.etree import ElementTree as ET
 from pydantic import BaseModel
 
 class SRR(BaseModel):
-    code: str
-    num_reads: str | int
-    average_reads: dict[int, int]  # index, average reads
+    code: str = ""
+    num_reads: int = -1
+    average_reads: dict[int, int] = {} # index, average reads
+    I_file_index: int = -1
+    R1_file_index: int = -1
+    R2_file_index: int = -1
 
 
 def metadata_url(srr_code: str) -> str:
@@ -27,24 +30,34 @@ def xml_parser(xml_data) -> SRR:
     root = ET.fromstring(xml_data)
     tree = ET.ElementTree(element=root)
     
-    code: str
-    num_reads: int | str
-    average_reads: dict[int, int] = {}  # index, average_reads
+    srr_builder = SRR()
+    filename_index: int = 1
     for i in tree.iter():
-        if i.tag.lower() == "runbundle":
-            code = i.attrib["request"]
-        if i.tag.lower() == "statistics":
-            if "nreads" in i.attrib:  # Collect the number of reads
-                if i.attrib["nreads"] == "variable":
-                    num_reads = i.attrib["nreads"]
-                    break
-                else:
-                    num_reads = int(i.attrib["nreads"])
-        elif i.tag.lower() == "read":
-            index: int = int(i.attrib["index"])
-            average: int = int(i.attrib["average"])
-            average_reads[index] = average
-    return SRR(code=code, num_reads=num_reads, average_reads=average_reads)
+        # print(i.tag, i.attrib)
+        match i.tag.lower():
+            case "runbundle":
+                srr_builder.code = i.attrib["request"]
+            case "statistics":
+                if "nreads" in i.attrib:  # Collect the number of reads
+                    if i.attrib["nreads"] == "variable":
+                        srr_builder.num_reads = 2
+                    else:
+                        srr_builder.num_reads = i.attrib["nreads"]
+            case "read":
+                index: int = int(i.attrib["index"])
+                average: int = int(i.attrib["average"])
+                srr_builder.average_reads[index] = average
+            case "srafile":
+                filename = i.attrib["filename"]
+                if "I1" in filename:
+                    srr_builder.I_file_index = filename_index
+                elif "R1" in filename:
+                    srr_builder.R1_file_index = filename_index
+                elif "R2" in filename:
+                    srr_builder.R2_file_index = filename_index
+                filename_index += 1
+            
+    return srr_builder
 
 
 def collect(srr_code: str) -> SRR:

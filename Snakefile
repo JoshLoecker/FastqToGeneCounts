@@ -2,8 +2,7 @@ import os
 import csv
 import warnings
 import sys
-import pandas as pd
-from typing import Literal
+import snakemake
 from utils import get, perform
 from utils.constants import EndType
 from utils import single_cell
@@ -13,6 +12,9 @@ configfile: "snakemake_config.yaml"
 
 # Ensure the results directory is made
 os.makedirs(config["ROOTDIR"], exist_ok=True)
+
+# snakemake.logger.info("THIS IS AN INFO ITEM")
+
 
 
 # Validate users are using conda. This is important for temporary conda environments defined in the workflow
@@ -472,6 +474,25 @@ if perform.prefetch(config=config):
             
             """
 
+    def get_tempfilename(wildcards):
+        end_type = get.end_type(config=config, tissue_name=wildcards.tissue_name, tag=wildcards.tag).value
+        is_single_cell = True if end_type == "SLC" else False
+
+        if is_single_cell:
+            srr_data = single_cell.collect(get.srr_code(config=config)[0])
+            if wildcards.PE_SE == "1":
+                temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.R1_file_index}.fastq"
+            if wildcards.PE_SE == "2":
+                temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.R2_file_index}.fastq"
+            if wildcards.PE_SE == "3":
+                temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.I_file_index}.fastq"
+        else:
+            if wildcards.PE_SE in ["1", "2"]:
+                temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq"
+            else:
+                temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}.fastq"
+        return temp_filename
+
     checkpoint fasterq_dump:
         input:
             prefetch=rules.prefetch.output,
@@ -482,12 +503,15 @@ if perform.prefetch(config=config):
         params:
             # split_command=lambda wildcards: "--split-files" if wildcards.PE_SE in ["1", "2"] else "--concatenate-reads",
             temp_dir="/scratch",
-            temp_filename=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq" if wildcards.PE_SE in ["1", "2"]
-                                            else f"{wildcards.tissue_name}_{wildcards.tag}.fastq",
-            gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2"]
-                                        else f"{wildcards.tissue_name}_{wildcards.tag}.fastq.gz",
-            split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2"] else False,
-            end_type= lambda wildcards: get.end_type(config=config,tissue_name=wildcards.tissue_name,tag=wildcards.tag)
+            temp_filename=get_tempfilename,
+            gzip_file=lambda wildcards: f"{get_tempfilename(wildcards)}.gz",
+            # temp_filename=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq" if wildcards.PE_SE in ["1", "2", "3"]
+            #                                 else f"{wildcards.tissue_name}_{wildcards.tag}.fastq",
+            # gzip_file=lambda wildcards: f"{wildcards.tissue_name}_{wildcards.tag}_{wildcards.PE_SE}.fastq.gz" if wildcards.PE_SE in ["1", "2", "3"]
+            #                             else f"{wildcards.tissue_name}_{wildcards.tag}.fastq.gz",
+            split_files=lambda wildcards: True if wildcards.PE_SE in ["1", "2", "3"] else False,
+            end_type= lambda wildcards: get.end_type(config=config,tissue_name=wildcards.tissue_name,tag=wildcards.tag).name,
+            sra_data=lambda wildcards: single_cell.collect(srr_code=get.srr_code(config=config)[0])
         resources:
             mem_mb=lambda wildcards, attempt: 25600 * attempt,  # 25 GB
             time_min=lambda wildcards, attempt: 45 * attempt,
@@ -495,6 +519,7 @@ if perform.prefetch(config=config):
         benchmark: repeat(os.path.join("benchmarks","{tissue_name}","fasterq_dump","{tissue_name}_{tag}_{PE_SE}.benchmark"), config["BENCHMARK_TIMES"])
         shell:
             """
+            echo {params.temp_filename}
             command='fasterq-dump --force --progress --threads {threads} --temp {params.temp_dir} --outdir {params.temp_dir}'
             
             # Set the split/concatenate based on paired end or single end data
@@ -504,7 +529,7 @@ if perform.prefetch(config=config):
                 command+=' --concatenate-reads'
             fi
             
-            if [[ "{params.end_type}" == "single-cell" ]]; then
+            if [[ "{params.end_type}" == "single_cell" ]]; then
                 command+=" --include-technical"
             fi
             
@@ -1259,7 +1284,7 @@ rule multiqc:
     conda: "envs/multiqc.yaml"
     resources:
         mem_mb=lambda wildcards, attempt: 10240 * attempt,# 10 GB * attempt
-        runtime=lambda wildcards, attempt: int(30 * (attempt * 0.75))  # 30 minutes, don't need much more time than this if it fails
+        runtime=lambda wildcards, attempt: 30 * int(attempt)  # 30 minutes, don't need much more time than this if it fails
     benchmark: repeat(os.path.join("benchmarks","{tissue_name}","multiqc","{tissue_name}.benchmark"), config["BENCHMARK_TIMES"])
     shell:
         """
