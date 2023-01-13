@@ -376,7 +376,7 @@ if perform.screen(config=config):
                 "http://ftp1.babraham.ac.uk/ftpusr46/FastQ_Screen_Genomes/fastq_screen.conf"
             ]
         resources:
-            mem_mb=lambda wildcards, attempt: 1500 * attempt, # 1.5 GB * attempt
+            mem_mb=lambda wildcards, attempt: 102400 * attempt, # 10 GB * attempt
             runtime=lambda wildcards, attempt: 240 * attempt  # 240 minutes * attempt (4 hours)
         shell:
             """
@@ -476,9 +476,8 @@ if perform.prefetch(config=config):
 
     def get_tempfilename(wildcards):
         end_type = get.end_type(config=config, tissue_name=wildcards.tissue_name, tag=wildcards.tag).value
-        is_single_cell = True if end_type == "SLC" else False
 
-        if is_single_cell:
+        if end_type == "SLC":
             srr_data = single_cell.collect(get.srr_code(config=config)[0])
             if wildcards.PE_SE == "1":
                 temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.R1_file_index}.fastq"
@@ -724,6 +723,10 @@ if perform.trim(config=config):
                 file_out_2="{params.temp_dir}/{wildcards.tissue_name}_{wildcards.tag}_2_val_2.fq.gz"    # final output paired end, reverse read
                 trim_galore --paired --cores 4 -o {params.temp_dir} {input}
                 mv "$file_out_2" "{output}"
+            
+            # Don't trim index files, simply copy them
+            elif [[ "{wildcards.PE_SE}" == "3" ]]; then
+                cp {input} {output}
 
             # Work on single-end reads
             elif [[ "{wildcards.PE_SE}" == "S" ]]; then
