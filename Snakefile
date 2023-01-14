@@ -100,7 +100,7 @@ def perform_trim_rule(wildcards):
         return []
 
 
-def perform_dump_fastq(wildcards):
+def perform_fasterq_dump(wildcards):
     if perform.prefetch(config=config):
         return expand(
             os.path.join(config["ROOTDIR"], "data", "{tissue_name}", "raw", "{tissue_name}_{tag}_{PE_SE}.fastq.gz"),
@@ -138,7 +138,7 @@ rule_all = [
 
     # Generate Genome
     config["GENERATE_GENOME"]["GENOME_SAVE_DIR"],
-    perform_dump_fastq,  # dump_fastq
+    perform_fasterq_dump,  # dump_fastq
     perform_screen_rule,  # fastq_screen
     perform_trim_rule,  # trim reads
 
@@ -481,9 +481,9 @@ if perform.prefetch(config=config):
             srr_data = single_cell.collect(get.srr_code(config=config)[0])
             if wildcards.PE_SE == "1":
                 temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.R1_file_index}.fastq"
-            if wildcards.PE_SE == "2":
+            elif wildcards.PE_SE == "2":
                 temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.R2_file_index}.fastq"
-            if wildcards.PE_SE == "3":
+            elif wildcards.PE_SE == "3":
                 temp_filename = f"{wildcards.tissue_name}_{wildcards.tag}_{srr_data.I_file_index}.fastq"
         else:
             if wildcards.PE_SE in ["1", "2"]:

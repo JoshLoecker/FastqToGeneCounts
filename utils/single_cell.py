@@ -33,7 +33,7 @@ def xml_parser(xml_data) -> SRR:
     srr_builder = SRR()
     filename_index: int = 1
     for i in tree.iter():
-        # print(i.tag, i.attrib)
+        #print(i.tag, i.attrib)
         match i.tag.lower():
             case "runbundle":
                 srr_builder.code = i.attrib["request"]
@@ -53,7 +53,7 @@ def xml_parser(xml_data) -> SRR:
                     srr_builder.I_file_index = filename_index
                 elif "R1" in filename:
                     srr_builder.R1_file_index = filename_index
-                elif "R2" in filename:
+                elif "R2" in filename and filename[0:4] != "SRR2":  # Make sure we dont get an SRR code like "SRR23456"
                     srr_builder.R2_file_index = filename_index
                 filename_index += 1
             
@@ -69,9 +69,9 @@ def collect(srr_code: str) -> SRR:
 
 if __name__ == '__main__':
     srr_code: list[str] = [
-        "SRR14856518",
-        "SRR8387812",
-        "SRR20214173"
+        # "SRR22474175",  # Two reads
+        # "SRR8387812",  # Three reads
+        "SRR20214173"   # Variable reads
     ]
     for code in srr_code:
         data = collect(srr_code=code)
