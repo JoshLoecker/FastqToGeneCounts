@@ -696,6 +696,18 @@ if perform.trim(config=config):
             return [forward_read, reverse_read]
         else:
             return output_files.fastq
+    def get_trim_runtime(wildcards):
+        # Get the runtime based on file size. Using 16 threads (the default), it takes ~## minutes per GB
+        # Get wildcards.input[0] file size
+        if wildcards.PE_SE in ["1", "2", "S"]:
+            file_size = max(
+                os.path.getsize(wildcards.input[0]),
+                os.path.getsize(wildcards.input[1])
+            )
+        elif wildcards.PE_SE == "3":
+            return 10  # Only need short time to copy data for single-cell index files
+
+
 
     checkpoint trim:
         input: get_trim_input,
